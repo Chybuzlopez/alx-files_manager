@@ -132,3 +132,38 @@ export const putUnPublish = async (req, res) => {
 
   return res.json(file);
 };
+
+export const getFile = async (req, res) => {
+  const { id } = req.params;
+
+  const file = await dbClient.findFile({ _id: ObjectID(id) });
+  if (!file) return res.status(404).json({ error: 'Not found' });
+
+  const {
+    isPublic, type, name, userId,
+  } = file;
+  let { path } = file;
+
+  if (isPublic === false) {
+    const token = req.header('X-Token');
+    const user = await redisClient.get(`auth_${token}`);
+    if (user !== userId) {
+      return res.status(404).json({ error: 'Not found' });
+    }
+  }
+
+  if (type === 'folder') {
+    return res.status(400).json({ error: 'A folder doesn\'t have content' });
+  }
+
+  const { size } = req.query;
+
+  if (size && size !== undefined) path = `${path}_${size}`;
+  res.set('Content-Type', mime.contentType(name));
+
+  if (type === 'image') return res.sendFile(path);
+
+  const data = await readFile(path, type);
+
+  return res.send(data);
+};
