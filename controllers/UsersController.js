@@ -3,36 +3,28 @@ import { ObjectId } from 'mongodb';
 import RedisClient from '../utils/redis';
 import dbClient from '../utils/db';
 
-export async function postNew(req, res) => {
+export const postNew = async (req, res) => {
   const { email, password } = req.body;
 
-  if (!email) res.status(400).send({ error: 'Missing email' });
-  if (!password) res.status(400).send({ error: 'Missing password' });
+  if (!email) return res.status(400).json({ error: 'Missing email' });
+  if (!password) return res.status(400).json({ error: 'Missing password' });
 
-  const emailExists = await dbClient.db.collection('users').findOne({ email });
-  if (emailExists) {
-    return res.status(400).send({ error: 'Already exist' });
-  }
+  let user = await dbClient.findUser({ email });
+  if (user) return res.status(400).json({ error: 'Already exist' });
 
-  let userId;
-  const hashedPassword = sha1(password);
+  user = await dbClient.createUser(email, sha1(password));
 
-  const newUser = {
-    email: email,
-    password: hashedPassword,
-  }
+  return res.json(user);
+};
 
-  try {
-    await dbClient.db.collection('users').insertOne(newUser, (err) => {
-      userId = newUser._id;
-      return res.status(201).send({
-        email: email,
-        id: userId,
-      });
-    });
-  } catch (error) {
-    return res.status(err.status).send({
-        'error': err,
-      });
-  }
+export const getMe = async (req, res) => {
+  const token = req.header('X-token');
+
+  const uid = await RedisClient.get(`auth_${token}`);
+
+  if (!uid) return res.status(401).json({ error: 'Unauthorized' });
+
+  const user = await dbClient.findUser({ _id: ObjectId(uid) });
+
+  return res.json({ email: user.email, id: user._id });
 };
