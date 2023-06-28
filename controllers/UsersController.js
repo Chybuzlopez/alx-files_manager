@@ -3,16 +3,36 @@ import { ObjectId } from 'mongodb';
 import RedisClient from '../utils/redis';
 import dbClient from '../utils/db';
 
-export const postNew = async (req, res) => {
+export async function postNew(req, res) => {
   const { email, password } = req.body;
 
-  if (!email) return res.status(400).json({ error: 'Missing email' });
-  if (!password) return res.status(400).json({ error: 'Missing password' });
+  if (!email) res.status(400).send({ error: 'Missing email' });
+  if (!password) res.status(400).send({ error: 'Missing password' });
 
-  let user = await dbClient.findUser({ email });
-  if (user) return res.status(400).json({ error: 'Already exist' });
+  const emailExists = await dbClient.db.collection('users').findOne({ email });
+  if (emailExists) {
+    return res.status(400).send({ error: 'Already exist' });
+  }
 
-  user = await dbClient.createUser(email, sha1(password));
+  let userId;
+  const hashedPassword = sha1(password);
 
-  return res.json(user);
+  const newUser = {
+    email: email,
+    password: hashedPassword,
+  }
+
+  try {
+    await dbClient.db.collection('users').insertOne(newUser, (err) => {
+      userId = newUser._id;
+      return res.status(201).send({
+        email: email,
+        id: userId,
+      });
+    });
+  } catch (error) {
+    return res.status(err.status).send({
+        'error': err,
+      });
+  }
 };
